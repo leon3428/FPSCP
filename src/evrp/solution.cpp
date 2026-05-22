@@ -1,0 +1,95 @@
+#include "solution.hpp"
+#include <limits>
+#include <ranges>
+#include <unordered_set>
+#include <algorithm>
+
+evrp::Solution::Solution(std::shared_ptr<Instance> instance) : instance_(instance) {}
+evrp::Solution::Solution(std::shared_ptr<Instance> instance, std::vector<size_t> const &routes)
+    : instance_(instance), routes_(routes) {}
+evrp::Solution::Solution(std::shared_ptr<Instance> instance, std::vector<size_t> &&routes)
+    : instance_(instance), routes_(std::move(routes)) {}
+
+auto evrp::Solution::is_cargo_valid() const -> bool {
+  auto cargo = instance_->cargo_capacity();
+
+  for (auto node_id : routes_) {
+    const auto &node = instance_->node(node_id);
+    switch (node.type) {
+      case NodeType::Depot:
+        cargo = instance_->cargo_capacity();
+        break;
+      case NodeType::Customer:
+        cargo -= node.demand;
+        if (cargo < 0) {
+          return false;
+        }
+        break;
+      case NodeType::ChargingStation:
+        break;
+    }
+  }
+
+  return true;
+}
+
+auto evrp::Solution::is_energy_and_cargo_valid() const -> bool {
+  if (routes_.size() < 2) return false;
+
+  auto energy = instance_->battery_capacity();
+  auto cargo = instance_->cargo_capacity();
+
+  auto previous_node_id = *routes_.begin();
+  for (auto it = ++routes_.begin(); it != routes_.end(); ++it) {
+    auto current_node_id = *it;
+    energy -= instance_->energy_required(previous_node_id, current_node_id);
+    if (energy < 0) {
+      return false;
+    }
+
+    auto &node = instance_->node(current_node_id);
+    switch (node.type) {
+      case NodeType::Depot:
+        energy = instance_->battery_capacity();
+        cargo = instance_->cargo_capacity();
+        break;
+      case NodeType::Customer:
+        cargo -= node.demand;
+        if (cargo < 0) {
+          return false;
+        }
+        break;
+      case NodeType::ChargingStation:
+        energy = instance_->battery_capacity();
+        break;
+    }
+    previous_node_id = current_node_id;
+  }
+
+  return true;
+}
+
+auto evrp::Solution::is_valid() const -> bool {
+  if (routes_.empty()) return false;
+  if (*routes_.begin() != instance_->depot_id() || *(routes_.rbegin()) != instance_->depot_id()) return false;
+
+  auto is_customer = [this](size_t ind) { return instance_->node(ind).type == NodeType::Customer; };
+  size_t customer_cnt = std::ranges::count_if(routes_, is_customer);
+  auto customers_on_route = std::ranges::to<std::unordered_set<size_t>>(routes_ | std::views::filter(is_customer));
+
+  if (instance_->customer_cnt() != customer_cnt || customers_on_route.size() != customer_cnt) return false;
+
+  return is_energy_and_cargo_valid();
+}
+
+auto evrp::Solution::cost() const -> double {
+  if (routes_.size() < 2) return std::numeric_limits<double>::infinity();
+  auto cost = 0.0;
+  auto previous_node_id = *routes_.begin();
+  for (auto it = ++routes_.begin(); it != routes_.end(); ++it) {
+    auto current_node_id = *it;
+    cost += instance_->distance(previous_node_id, current_node_id);
+    previous_node_id = current_node_id;
+  }
+  return cost;
+}

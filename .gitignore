@@ -1,0 +1,31 @@
+# Build artifacts
+build/
+_skbuild/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+.output/
+.pytest_cache/
+dataset/

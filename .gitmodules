@@ -1,0 +1,9 @@
+[submodule "extern/cevrp"]
+	path = extern/cevrp
+	url = https://github.com/Flyki/CEVRP.git
+[submodule "extern/frvcpy"]
+	path = extern/frvcpy
+	url = https://github.com/e-VRO/frvcpy.git
+[submodule "extern/bhga"]
+	path = extern/bhga
+	url = https://github.com/TTarkooo/BHGA_CEVRP.git

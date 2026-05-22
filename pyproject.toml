@@ -1,0 +1,38 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "evrp-optimal-decoder"
+version = "0.1.0"
+description = "Optimal decoder for the Electric Vehicle Routing Problem"
+requires-python = ">=3.10"
+dependencies = [
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+    "numpy",
+    "pandas>=2.3.3",
+    "seaborn>=0.13.2",
+    "tqdm>=4.67.3",
+    "xmltodict>=1.0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jupyterlab",
+    "ipykernel",
+]
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["evrp_decoder"]
+cmake.build-type = "Release"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "taskipy>=1.14.1",
+]
+
+[tool.taskipy.tasks]
+test = "pytest tests/ -v"
