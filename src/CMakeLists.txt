@@ -14,10 +14,14 @@ add_library(evrp_core STATIC
     evrp/baco_decode.cpp
     evrp/caco_decode.hpp
     evrp/caco_decode.cpp
+    evrp/bhga_charge_hook.hpp
+    evrp/bhga_charge_hook.cpp
+    evrp/bhga_ga.hpp
+    evrp/bhga_ga.cpp
 )
 target_include_directories(evrp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(evrp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(evrp_core PRIVATE bhga_case cevrp_lib)
+target_link_libraries(evrp_core PRIVATE bhga_ga bhga_case cevrp_lib)
 
 # Python bindings (skipped when building tests standalone)
 option(EVRP_BUILD_BINDINGS "Build Python bindings" ON)

@@ -12,9 +12,12 @@ Decoders and comparison tools for the Fixed Permutation Splitting and Charging P
   - BHGA focus enumeration
   - BACO and CACO from CEVRP
   - `frvcpy` fixed-route charging station insertion
+- The full BHGA metaheuristic with a swappable charging decoder (`run_bhga`),
+  used to compare vanilla BHGA with BHGA using SS-FR-FLA.
 - Scripts for generating customer permutations and collecting decoder
   comparison data.
-- Notebooks for data exploration, front-size analysis, and decoder comparison.
+- Notebooks for data exploration, front-size analysis, decoder comparison, and
+  the BHGA comparison.
 
 ## Repository Layout
 
@@ -121,6 +124,36 @@ print(decoded.is_valid())
 For two-phase decoders, call `linear_split` first and pass `split.routes` to
 the charging-station decoder.
 
+## BHGA With a Swappable Decoder
+
+`run_bhga` runs the complete BHGA genetic algorithm (`extern/bhga`) with either
+its own charging decoder (`decoder="vanilla"`, `focusEnumeration`) or SS-FR-FLA
+(`decoder="ss_fr_fla"`, `BatteryDecode` with `single_cs=True`):
+
+```python
+from evrp_decoder._evrp_core import BhgaRunConfig, run_bhga
+from evrp_decoder.loader import load_evrp
+
+config = BhgaRunConfig()
+config.vrp_path = "extern/bhga/Instances/CVRP/E-n22-k4.vrp"
+config.evrp_path = "extern/bhga/Instances/CVRP/E-n22-k4.evrp"
+config.decoder = "ss_fr_fla"
+config.seed = 1
+config.nb_iter = 30000  # iterations without improvement
+config.mix = "12116"    # BHGA-SP
+
+result = run_bhga(config, load_evrp("dataset/E-n22-k4.evrp"))
+print(result.cost, result.iterations, result.elapsed_s)
+```
+
+The submodule is not modified.  The BHGA sources are compiled with
+`focusEnumeration` and `calCost` redirected to `src/evrp/bhga_charge_hook.cpp`,
+while `case.cpp` keeps the original `focusEnumeration` for the vanilla run.
+With `decoder="vanilla"` the result matches the upstream `HGA` binary for the
+same seed.  Only BHGA mode 1 (the middle digit of `mix`) is supported.
+
+BHGA measures time with process CPU time, so run one GA per process.
+
 ## Running Tests
 
 ```bash
@@ -162,6 +195,18 @@ uv run python scripts/collect_data.py \
   --upper-bound 1000000000
 ```
 
+Run vanilla BHGA and BHGA with SS-FR-FLA (seeds 1..16 on every instance, one
+process per run).  Results are appended to a JSON-lines file as runs finish, so
+rerunning the same command resumes an interrupted collection:
+
+```bash
+uv run python scripts/collect_bhga_comparison.py \
+  --seeds 16 \
+  --nb-iter 30000 \
+  --mix 12116 \
+  --output results/bhga_comparison.jsonl
+```
+
 ## Notebooks
 
 The `notebooks/` directory includes exploratory and analysis notebooks:
@@ -169,6 +214,7 @@ The `notebooks/` directory includes exploratory and analysis notebooks:
 - `data_exploration.ipynb`
 - `front_size_analysis.ipynb`
 - `decoder_comparison.ipynb`
+- `bhga_comparison.ipynb`
 
 Start Jupyter with:
 

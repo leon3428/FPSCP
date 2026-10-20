@@ -2,6 +2,7 @@
 #include <pybind11/stl.h>
 #include "evrp/baco_decode.hpp"
 #include "evrp/bhga_decode.hpp"
+#include "evrp/bhga_ga.hpp"
 #include "evrp/caco_decode.hpp"
 #include "evrp/instance.hpp"
 #include "evrp/node.hpp"
@@ -91,4 +92,30 @@ PYBIND11_MODULE(_evrp_core, m) {
       .def("decode", &evrp::CacoDecode::decode, py::arg("routes"),
            py::call_guard<py::gil_scoped_release>())
       .def("last_elapsed_ns", &evrp::CacoDecode::last_elapsed_ns);
+
+  py::class_<evrp::BhgaRunConfig>(m, "BhgaRunConfig")
+      .def(py::init<>())
+      .def_readwrite("vrp_path", &evrp::BhgaRunConfig::vrp_path)
+      .def_readwrite("evrp_path", &evrp::BhgaRunConfig::evrp_path)
+      .def_readwrite("decoder", &evrp::BhgaRunConfig::decoder)
+      .def_readwrite("seed", &evrp::BhgaRunConfig::seed)
+      .def_readwrite("nb_iter", &evrp::BhgaRunConfig::nb_iter)
+      .def_readwrite("time_limit", &evrp::BhgaRunConfig::time_limit)
+      .def_readwrite("mix", &evrp::BhgaRunConfig::mix);
+
+  py::class_<evrp::BhgaRunResult>(m, "BhgaRunResult")
+      .def_readonly("cost", &evrp::BhgaRunResult::cost)
+      .def_readonly("bhga_cost", &evrp::BhgaRunResult::bhga_cost)
+      .def_readonly("energy_feasible", &evrp::BhgaRunResult::energy_feasible)
+      .def_readonly("routes", &evrp::BhgaRunResult::routes)
+      .def_readonly("customer_routes", &evrp::BhgaRunResult::customer_routes)
+      .def_readonly("iterations", &evrp::BhgaRunResult::iterations)
+      .def_readonly("elapsed_s", &evrp::BhgaRunResult::elapsed_s)
+      .def_readonly("cpu_s", &evrp::BhgaRunResult::cpu_s)
+      .def_readonly("charge_calls", &evrp::BhgaRunResult::charge_calls)
+      .def_readonly("charge_ns", &evrp::BhgaRunResult::charge_ns)
+      .def_readonly("progress", &evrp::BhgaRunResult::progress);
+
+  m.def("run_bhga", &evrp::run_bhga, py::arg("config"), py::arg("instance"),
+        py::call_guard<py::gil_scoped_release>());
 }
