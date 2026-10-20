@@ -8,7 +8,9 @@
 namespace evrp {
 
 // Inserts charging stations into existing routes using CACO's
-// insertStationBySimpleEnumeration (fallback: insertStationByRemove).
+// insertStationBySimpleEnumeration (fallback: insertStationByRemove). The
+// enumeration is a local copy with route reconstruction restored, since the
+// upstream version only returns the fitness.
 // Loads the instance directly from an EVRP file.
 class CacoDecode {
  public:

@@ -2,6 +2,7 @@
 // All cevrp symbols — including the cevrp Case class — are hidden.
 // Only the exported functions below are visible to the main binary.
 
+#include <cfloat>
 #include <climits>
 #include <cstddef>
 
@@ -72,6 +73,82 @@ auto decode_routes(CevrpCase *c, std::vector<size_t> const &routes, InsertFn ins
   return new_routes;
 }
 
+// Copy of cevrp's tryACertainN (simple-enumeration variant) with the route
+// reconstruction restored; upstream has it commented out and only returns the
+// fitness, which is all CACO::fixOneSolution needs.
+void caco_try_n(int mlen, int nlen, int *chosenPos, std::vector<int> &finalRoute, double &finalfit, int curub,
+                std::vector<int> &route, std::vector<double> &accumulateDis, Case *instance) {
+  for (int i = mlen; i <= (int)route.size() - 1 - nlen; i++) {
+    if (curub == nlen) {
+      double onedis = instance->distances[route[i]][instance->bestStation[route[i]][route[i + 1]]];
+      if (accumulateDis[i] + onedis > instance->maxDis) {
+        break;
+      }
+    } else {
+      int lastpos = chosenPos[curub - nlen - 1];
+      double onedis = instance->distances[route[lastpos + 1]][instance->bestStation[route[lastpos]][route[lastpos + 1]]];
+      double twodis = instance->distances[route[i]][instance->bestStation[route[i]][route[i + 1]]];
+      if (accumulateDis[i] - accumulateDis[lastpos + 1] + onedis + twodis > instance->maxDis) {
+        break;
+      }
+    }
+    if (nlen == 1) {
+      double onedis = accumulateDis.back() - accumulateDis[i + 1] +
+                      instance->distances[instance->bestStation[route[i]][route[i + 1]]][route[i + 1]];
+      if (onedis > instance->maxDis) {
+        continue;
+      }
+    }
+
+    chosenPos[curub - nlen] = i;
+    if (nlen > 1) {
+      caco_try_n(i + 1, nlen - 1, chosenPos, finalRoute, finalfit, curub, route, accumulateDis, instance);
+    } else {
+      double disum = accumulateDis.back();
+      for (int j = 0; j < curub; j++) {
+        int firstnode = route[chosenPos[j]];
+        int secondnode = route[chosenPos[j] + 1];
+        int thestation = instance->bestStation[firstnode][secondnode];
+        disum -= instance->distances[firstnode][secondnode];
+        disum += instance->distances[firstnode][thestation];
+        disum += instance->distances[secondnode][thestation];
+      }
+      if (disum < finalfit) {
+        finalRoute = route;
+        for (int j = curub - 1; j >= 0; j--) {
+          finalRoute.insert(finalRoute.begin() + chosenPos[j] + 1,
+                            instance->bestStation[finalRoute[chosenPos[j]]][finalRoute[chosenPos[j] + 1]]);
+        }
+        finalfit = disum;
+      }
+    }
+  }
+}
+
+// Copy of cevrp's insertStationBySimpleEnumeration that returns the route.
+auto caco_simple_enumeration(std::vector<int> route, Case *instance) -> std::pair<std::vector<int>, double> {
+  std::vector<double> accumulateDistance(route.size(), 0);
+  for (int i = 1; i < (int)route.size(); i++) {
+    accumulateDistance[i] = accumulateDistance[i - 1] + instance->distances[route[i]][route[i - 1]];
+  }
+  if (accumulateDistance.back() <= instance->maxDis) {
+    return std::make_pair(route, accumulateDistance.back());
+  }
+
+  int ub = (int)(accumulateDistance.back() / instance->maxDis + 1);
+  int lb = (int)(accumulateDistance.back() / instance->maxDis);
+  std::vector<int> chosenPos(route.size());
+  std::vector<int> finalRoute;
+  double finalfit = DBL_MAX;
+  for (int i = lb; i <= ub; i++) {
+    caco_try_n(0, i, chosenPos.data(), finalRoute, finalfit, i, route, accumulateDistance, instance);
+  }
+  if (finalfit != DBL_MAX) {
+    return std::make_pair(finalRoute, finalfit);
+  }
+  return std::make_pair(route, -1.0);
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -80,7 +157,7 @@ auto decode_routes(CevrpCase *c, std::vector<size_t> const &routes, InsertFn ins
 __attribute__((visibility("default"))) auto caco_decode_raw(CevrpCase *c, std::vector<size_t> const &routes)
     -> std::vector<size_t> {
   return decode_routes(c, routes, [](std::vector<int> tour, Case *cas) {
-    auto [result, dist] = insertStationBySimpleEnumeration(tour, cas);
+    auto [result, dist] = caco_simple_enumeration(tour, cas);
     if (dist < 0 || dist >= static_cast<double>(INFEASIBLE)) return insertStationByRemove(tour, cas);
     return std::make_pair(result, dist);
   });
