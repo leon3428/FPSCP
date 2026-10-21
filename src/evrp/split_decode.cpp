@@ -109,18 +109,18 @@ auto evrp::ParetoFront2D::colapse() -> void {
 
 evrp::BatteryDecode::BatteryDecode(std::shared_ptr<Instance> instance) : instance_(instance), cs_mat_(instance) {}
 
-auto evrp::BatteryDecode::decode(Solution const &solution, double upper_bound, bool single_cs) -> Solution {
+auto evrp::BatteryDecode::decode(Solution const &solution, bool single_cs) -> Solution {
   auto t0 = std::chrono::steady_clock::now();
   fronts_.resize(solution.routes().size());
   for (auto &front : fronts_) front.clear();
-  forward_pass_(solution, upper_bound, single_cs);
+  forward_pass_(solution, single_cs);
   auto result = backward_pass_(solution);
   last_elapsed_ns_ = std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now() - t0).count();
   return result;
 }
 
-auto evrp::BatteryDecode::forward_pass_(Solution const &solution, double upper_bound,  bool single_cs) -> void {
+auto evrp::BatteryDecode::forward_pass_(Solution const &solution, bool single_cs) -> void {
   const auto &perm = solution.routes();
 
   fronts_[0].emplace(0.0, 0.0, 0.0);
@@ -145,8 +145,7 @@ auto evrp::BatteryDecode::forward_pass_(Solution const &solution, double upper_b
         prop.prev = sol_id;
         prop.jump_case = JumpCase::Direct;
 
-        if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity() &&
-            prop.distance <= upper_bound) {
+        if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
           if (curr_node == instance_->depot_id()) {
             prop.battery_used = 0;
             prop.cargo_used = 0;
@@ -182,8 +181,7 @@ auto evrp::BatteryDecode::forward_pass_(Solution const &solution, double upper_b
             prop.cs_ind_in = cs_ind_in;
             prop.cs_ind_out = cs_ind_out;
 
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity() &&
-                prop.distance <= upper_bound) {
+            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
               if (curr_node == instance_->depot_id()) {
                 prop.battery_used = 0;
                 prop.cargo_used = 0;

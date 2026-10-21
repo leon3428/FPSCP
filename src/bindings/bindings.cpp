@@ -4,6 +4,7 @@
 #include "evrp/bhga_decode.hpp"
 #include "evrp/caco_decode.hpp"
 #include "evrp/instance.hpp"
+#include "evrp/montoya_decode.hpp"
 #include "evrp/node.hpp"
 #include "evrp/optimal_decode.hpp"
 #include "evrp/solution.hpp"
@@ -62,15 +63,23 @@ PYBIND11_MODULE(_evrp_core, m) {
 
   py::class_<evrp::OptimalDecode>(m, "OptimalDecode")
       .def(py::init<std::shared_ptr<evrp::Instance>>(), py::arg("instance"))
-      .def("decode", &evrp::OptimalDecode::decode, py::arg("solution"), py::arg("upper_bound"),
+      .def("decode", &evrp::OptimalDecode::decode, py::arg("solution"),
            py::call_guard<py::gil_scoped_release>())
       .def("front_size", &evrp::OptimalDecode::front_size, py::arg("i"))
       .def("front_cnt", &evrp::OptimalDecode::front_cnt)
       .def("last_elapsed_ns", &evrp::OptimalDecode::last_elapsed_ns);
 
+  py::class_<evrp::MontoyaDecode>(m, "MontoyaDecode")
+      .def(py::init<std::shared_ptr<evrp::Instance>>(), py::arg("instance"))
+      .def("decode", &evrp::MontoyaDecode::decode, py::arg("solution"),
+           py::call_guard<py::gil_scoped_release>())
+      .def("last_elapsed_ns", &evrp::MontoyaDecode::last_elapsed_ns)
+      .def("last_routes_evaluated", &evrp::MontoyaDecode::last_routes_evaluated)
+      .def("last_routes_repaired", &evrp::MontoyaDecode::last_routes_repaired);
+
   py::class_<evrp::BatteryDecode>(m, "BatteryDecode")
       .def(py::init<std::shared_ptr<evrp::Instance>>(), py::arg("instance"))
-      .def("decode", &evrp::BatteryDecode::decode, py::arg("solution"), py::arg("upper_bound"), py::arg("single_cs"),
+      .def("decode", &evrp::BatteryDecode::decode, py::arg("solution"), py::arg("single_cs"),
            py::call_guard<py::gil_scoped_release>())
       .def("last_elapsed_ns", &evrp::BatteryDecode::last_elapsed_ns);
 

@@ -47,11 +47,11 @@ class BatteryDecode {
  public:
   BatteryDecode(std::shared_ptr<Instance> instance);
 
-  auto decode(Solution const &solution, double upper_bound, bool single_cs) -> Solution;
+  auto decode(Solution const &solution, bool single_cs) -> Solution;
   [[nodiscard]] auto last_elapsed_ns() const -> uint64_t { return last_elapsed_ns_; }
 
  private:
-  auto forward_pass_(Solution const &solution, double upper_bound, bool single_cs) -> void;
+  auto forward_pass_(Solution const &solution, bool single_cs) -> void;
   auto backward_pass_(Solution const &solution) -> Solution;
 
   std::shared_ptr<Instance> instance_;

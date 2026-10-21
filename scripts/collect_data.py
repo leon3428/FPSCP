@@ -12,6 +12,7 @@ from evrp_decoder._evrp_core import (
     BhgaDecode,
     BacoDecode,
     CacoDecode,
+    MontoyaDecode,
     OptimalDecode,
     Solution,
     linear_split,
@@ -28,12 +29,12 @@ def parse_args():
         help="Path to permutations JSON (from generate_permutations.py)",
     )
     p.add_argument("--output", required=True, help="Output path for results JSON")
-    p.add_argument("--upper-bound", type=float, default=float("inf"))
     return p.parse_args()
 
 
-def process_chunk(inst, path, perms, upper_bound):
+def process_chunk(inst, path, perms):
     optimal_dec = OptimalDecode(inst)
+    montoya_dec = MontoyaDecode(inst)
     battery_dec = BatteryDecode(inst)
     bhga_dec = BhgaDecode(str(path))
     baco_dec = BacoDecode(str(path))
@@ -43,18 +44,21 @@ def process_chunk(inst, path, perms, upper_bound):
     ret = []
     for perm in perms:
         try:
-            res_opt = optimal_dec.decode(Solution(inst, perm), upper_bound)
+            res_opt = optimal_dec.decode(Solution(inst, perm))
             t_optimal = optimal_dec.last_elapsed_ns()
+
+            res_montoya = montoya_dec.decode(Solution(inst, perm))
+            t_montoya = montoya_dec.last_elapsed_ns()
 
             t0 = time.perf_counter_ns()
             split_result = linear_split(Solution(inst, perm))
             t_split = time.perf_counter_ns() - t0
             routes = split_result.routes
 
-            res_bat = battery_dec.decode(split_result, upper_bound, False)
+            res_bat = battery_dec.decode(split_result, False)
             t_battery = battery_dec.last_elapsed_ns()
 
-            res_bat_single = battery_dec.decode(split_result, upper_bound, True)
+            res_bat_single = battery_dec.decode(split_result, True)
             t_battery_single = battery_dec.last_elapsed_ns()
 
             res_bhga = Solution(inst, bhga_dec.decode(routes))
@@ -72,6 +76,8 @@ def process_chunk(inst, path, perms, upper_bound):
             ret.append(
                 {
                     "combined": res_opt.cost(),
+                    "montoya": res_montoya.cost(),
+                    "montoya_solved": res_montoya.is_valid(),
                     "battery": res_bat.cost(),
                     "battery_solved": res_bat.is_valid(),
                     "battery_single": res_bat_single.cost(),
@@ -85,6 +91,7 @@ def process_chunk(inst, path, perms, upper_bound):
                     "frvcpy": res_frvcpy.cost(),
                     "frvcpy_solved": res_frvcpy.is_valid(),
                     "t_optimal": t_optimal,
+                    "t_montoya": t_montoya,
                     "t_split": t_split,
                     "t_battery": t_battery,
                     "t_battery_single": t_battery_single,
@@ -133,7 +140,7 @@ def main():
 
     with ThreadPoolExecutor(max_workers=worker_cnt) as executor:
         futures = {
-            executor.submit(process_chunk, inst, path, chunk, args.upper_bound): name
+            executor.submit(process_chunk, inst, path, chunk): name
             for name, inst, path, chunk in tasks
         }
         for future in as_completed(futures):

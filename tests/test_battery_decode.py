@@ -16,7 +16,6 @@ DATASET_DIR = Path(__file__).resolve().parent.parent / "dataset"
 SMALL_INSTANCE = DATASET_DIR / "E-n22-k4.evrp"
 
 SHUFFLE_ITERATIONS = 10
-UPPER_BOUND = 1e9  # large bound so all solutions are accepted
 
 
 @pytest.fixture
@@ -45,7 +44,7 @@ class TestValidity:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, False)
+        result = decoder.decode(split, False)
 
         assert result.is_valid()
 
@@ -58,7 +57,7 @@ class TestValidity:
             rng.shuffle(customers)
             sol = Solution(inst, list(customers))
             split = linear_split(sol)
-            result = decoder.decode(split, UPPER_BOUND, False)
+            result = decoder.decode(split, False)
 
             assert result.is_valid()
 
@@ -75,7 +74,7 @@ class TestValidity:
                 rng.shuffle(customers)
                 sol = Solution(inst, list(customers))
                 split = linear_split(sol)
-                result = decoder.decode(split, UPPER_BOUND, False)
+                result = decoder.decode(split, False)
                 
                 assert result.is_valid(), (
                     f"Validity violation on instance {name}"
@@ -93,7 +92,7 @@ class TestStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, False)
+        result = decoder.decode(split, False)
         assert result.routes[0] == 0
 
     def test_ends_at_depot(self, inst: Instance, decoder: BatteryDecode):
@@ -101,7 +100,7 @@ class TestStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, False)
+        result = decoder.decode(split, False)
         assert result.routes[-1] == 0
 
     def test_preserves_all_customers(self, inst: Instance, decoder: BatteryDecode):
@@ -109,7 +108,7 @@ class TestStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, False)
+        result = decoder.decode(split, False)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)
@@ -124,7 +123,7 @@ class TestStructure:
 
         sol = Solution(inst, list(customers))
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, False)
+        result = decoder.decode(split, False)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)
@@ -143,7 +142,7 @@ class TestSingleCsValidity:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, True)
+        result = decoder.decode(split, True)
 
         assert result.is_valid()
 
@@ -156,7 +155,7 @@ class TestSingleCsValidity:
             rng.shuffle(customers)
             sol = Solution(inst, list(customers))
             split = linear_split(sol)
-            result = decoder.decode(split, UPPER_BOUND, True)
+            result = decoder.decode(split, True)
 
             assert result.is_valid()
 
@@ -167,7 +166,7 @@ class TestSingleCsStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, True)
+        result = decoder.decode(split, True)
         assert result.routes[0] == 0
 
     def test_ends_at_depot(self, inst: Instance, decoder: BatteryDecode):
@@ -175,7 +174,7 @@ class TestSingleCsStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, True)
+        result = decoder.decode(split, True)
         assert result.routes[-1] == 0
 
     def test_preserves_all_customers(self, inst: Instance, decoder: BatteryDecode):
@@ -183,7 +182,7 @@ class TestSingleCsStructure:
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, True)
+        result = decoder.decode(split, True)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)
@@ -198,7 +197,7 @@ class TestSingleCsStructure:
 
         sol = Solution(inst, list(customers))
         split = linear_split(sol)
-        result = decoder.decode(split, UPPER_BOUND, True)
+        result = decoder.decode(split, True)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)

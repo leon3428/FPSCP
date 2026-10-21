@@ -18,7 +18,6 @@ DATASET_DIR = Path(__file__).resolve().parent.parent / "dataset"
 SMALL_INSTANCE = DATASET_DIR / "E-n22-k4.evrp"
 
 SHUFFLE_ITERATIONS = 1000
-UPPER_BOUND = 1e9
 
 
 @pytest.fixture
@@ -141,7 +140,7 @@ class TestOptimality:
             split = linear_split(Solution(inst, list(customers)))
             routes = split.routes
 
-            bat = battery_dec.decode(split, UPPER_BOUND, False)
+            bat = battery_dec.decode(split, False)
             frv = Solution(inst, decoder.decode(routes))
 
             diff = frv.cost() - bat.cost()

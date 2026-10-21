@@ -12,7 +12,6 @@ DATASET_DIR = Path(__file__).resolve().parent.parent / "dataset"
 SMALL_INSTANCE = DATASET_DIR / "E-n22-k4.evrp"
 
 SHUFFLE_ITERATIONS = 10
-UPPER_BOUND = 1e9  # large bound so all solutions are accepted
 
 
 @pytest.fixture
@@ -40,7 +39,7 @@ class TestValidity:
         """Sequential customer order should produce a valid solution."""
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
-        result = decoder.decode(sol, UPPER_BOUND)
+        result = decoder.decode(sol)
 
         assert result.is_valid()
 
@@ -52,7 +51,7 @@ class TestValidity:
         for _ in range(SHUFFLE_ITERATIONS):
             rng.shuffle(customers)
             sol = Solution(inst, list(customers))
-            result = decoder.decode(sol, UPPER_BOUND)
+            result = decoder.decode(sol)
             assert result.is_valid()
 
     def test_all_instances_valid(self, all_instances: dict[str, Instance]):
@@ -67,7 +66,7 @@ class TestValidity:
             for _ in range(SHUFFLE_ITERATIONS):
                 rng.shuffle(customers)
                 sol = Solution(inst, list(customers))
-                result = decoder.decode(sol, UPPER_BOUND)
+                result = decoder.decode(sol)
                 assert result.is_valid(), (
                     f"Validity violation on instance {name}"
                 )
@@ -83,21 +82,21 @@ class TestStructure:
         """Decoded result should start with the depot."""
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
-        result = decoder.decode(sol, UPPER_BOUND)
+        result = decoder.decode(sol)
         assert result.routes[0] == 0
 
     def test_ends_at_depot(self, inst: Instance, decoder: OptimalDecode):
         """Decoded result should end with the depot."""
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
-        result = decoder.decode(sol, UPPER_BOUND)
+        result = decoder.decode(sol)
         assert result.routes[-1] == 0
 
     def test_preserves_all_customers(self, inst: Instance, decoder: OptimalDecode):
         """All customers from the input should appear in the output."""
         customers = list(range(1, inst.customer_cnt() + 1))
         sol = Solution(inst, customers)
-        result = decoder.decode(sol, UPPER_BOUND)
+        result = decoder.decode(sol)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)
@@ -111,7 +110,7 @@ class TestStructure:
         rng.shuffle(customers)
 
         sol = Solution(inst, list(customers))
-        result = decoder.decode(sol, UPPER_BOUND)
+        result = decoder.decode(sol)
 
         output_customers = [
             nid for nid in result.routes if inst.is_customer(nid)

@@ -14,6 +14,8 @@ add_library(evrp_core STATIC
     evrp/baco_decode.cpp
     evrp/caco_decode.hpp
     evrp/caco_decode.cpp
+    evrp/montoya_decode.hpp
+    evrp/montoya_decode.cpp
 )
 target_include_directories(evrp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(evrp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

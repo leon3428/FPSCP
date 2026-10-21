@@ -127,17 +127,17 @@ auto evrp::CsMatrix::trace(std::vector<size_t> &route, size_t ind1, size_t ind2)
 evrp::OptimalDecode::OptimalDecode(std::shared_ptr<Instance> instance)
     : instance_(instance), cs_mat_(instance), fronts_(instance_->customer_cnt() + 2) {}
 
-auto evrp::OptimalDecode::decode(Solution const &solution, double upper_bound) -> Solution {
+auto evrp::OptimalDecode::decode(Solution const &solution) -> Solution {
   auto t0 = std::chrono::steady_clock::now();
   for (auto &front : fronts_) front.clear();
-  forward_pass_(solution, upper_bound);
+  forward_pass_(solution);
   auto result = backward_pass_(solution);
   last_elapsed_ns_ =
       std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - t0).count();
   return result;
 }
 
-auto evrp::OptimalDecode::forward_pass_(Solution const &solution, double upper_bound) -> void {
+auto evrp::OptimalDecode::forward_pass_(Solution const &solution) -> void {
   assert(solution.routes().size() == instance_->customer_cnt());
   const auto &perm = solution.routes();
 
@@ -163,8 +163,7 @@ auto evrp::OptimalDecode::forward_pass_(Solution const &solution, double upper_b
         prop.prev = sol_id;
         prop.jump_case = JumpCase::Direct;
 
-        if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity() &&
-            prop.distance <= upper_bound) {
+        if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
           curr_front.emplace(prop);
         }
       }
@@ -196,8 +195,7 @@ auto evrp::OptimalDecode::forward_pass_(Solution const &solution, double upper_b
             prop.cs_ind_in = cs_ind_in;
             prop.cs_ind_out = cs_ind_out;
 
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity() &&
-                prop.distance <= upper_bound) {
+            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
               curr_front.emplace(prop);
             }
           }
@@ -216,8 +214,7 @@ auto evrp::OptimalDecode::forward_pass_(Solution const &solution, double upper_b
             prop.cs_ind_in = cs_ind_in;
             prop.cs_ind_out = cs_ind_out;
 
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity() &&
-                prop.distance <= upper_bound) {
+            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
               curr_front.emplace(prop);
             }
           }

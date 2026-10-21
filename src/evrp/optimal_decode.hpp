@@ -88,13 +88,13 @@ class OptimalDecode {
  public:
   OptimalDecode(std::shared_ptr<Instance> instance);
 
-  auto decode(Solution const &solution, double upper_bound) -> Solution;
+  auto decode(Solution const &solution) -> Solution;
   [[nodiscard]] auto front_size(size_t i) const { return fronts_[i].size(); }
   [[nodiscard]] auto front_cnt() const { return fronts_.size(); }
   [[nodiscard]] auto last_elapsed_ns() const -> uint64_t { return last_elapsed_ns_; }
 
  private:
-  auto forward_pass_(Solution const &solution, double upper_bound) -> void;
+  auto forward_pass_(Solution const &solution) -> void;
   auto backward_pass_(Solution const &solution) -> Solution;
 
   std::shared_ptr<Instance> instance_;

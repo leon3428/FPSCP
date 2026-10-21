@@ -95,7 +95,7 @@ customers = list(range(1, inst.customer_cnt() + 1))
 # Combined decoder inserts depots and charging stations while preserving
 # customer order.
 decoder = OptimalDecode(inst)
-decoded = decoder.decode(Solution(inst, customers), upper_bound=1e9)
+decoded = decoder.decode(Solution(inst, customers))
 
 print(decoded.routes)
 print(decoded.cost())
@@ -158,8 +158,7 @@ Collect decoder comparison data:
 uv run python scripts/collect_data.py \
   --dataset-dir dataset \
   --permutations .output/permutations_random.json \
-  --output .output/decoder_results.json \
-  --upper-bound 1000000000
+  --output .output/decoder_results.json
 ```
 
 ## Notebooks
@@ -182,6 +181,3 @@ uv run jupyter lab
   CEVRP and BHGA submodules both define incompatible global `Case` classes.
 - `evrp_decoder.frvcpy_decode` imports `extern/frvcpy` directly, so the
   `frvcpy` submodule must be present even if it is not installed separately.
-- `upper_bound` arguments are pruning bounds for decoder search.  Use a large
-  value such as `1e9` when you do not want pruning to reject candidate
-  solutions.
