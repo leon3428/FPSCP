@@ -3,10 +3,10 @@ import json
 import os
 import time
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from evrp_decoder.loader import load_all
+from evrp_decoder.loader import load_evrp
 from evrp_decoder._evrp_core import (
     BatteryDecode,
     BhgaDecode,
@@ -32,7 +32,9 @@ def parse_args():
     return p.parse_args()
 
 
-def process_chunk(inst, path, perms):
+def process_chunk(path, perms):
+    # Runs in a worker process: frvcpy is pure Python and would serialize threads on the GIL.
+    inst = load_evrp(path)
     optimal_dec = OptimalDecode(inst)
     montoya_dec = MontoyaDecode(inst)
     battery_dec = BatteryDecode(inst)
@@ -111,9 +113,8 @@ def process_chunk(inst, path, perms):
 def main():
     args = parse_args()
 
-    instances = load_all(args.dataset_dir)
     instance_paths = {p.stem: p for p in sorted(Path(args.dataset_dir).glob("*.evrp"))}
-    print(f"Loaded {len(instances)} instances")
+    print(f"Found {len(instance_paths)} instances")
 
     with open(args.permutations) as f:
         all_perms: dict[str, list[list[int]]] = json.load(f)
@@ -122,26 +123,25 @@ def main():
 
     tasks = []
     for name in sorted(all_perms):
-        inst = instances[name]
         path = instance_paths[name]
         perms = all_perms[name]
         n_chunks = max(1, min(worker_cnt, len(perms)))
         chunk_size = (len(perms) + n_chunks - 1) // n_chunks
         for i in range(0, len(perms), chunk_size):
-            tasks.append((name, inst, path, perms[i : i + chunk_size]))
+            tasks.append((name, path, perms[i : i + chunk_size]))
 
-    print(f"Submitting {len(tasks)} tasks across {worker_cnt} threads")
+    print(f"Submitting {len(tasks)} tasks across {worker_cnt} processes")
 
     result_parts: dict[str, list] = defaultdict(list)
     done_count: dict[str, int] = defaultdict(int)
     total_chunks: dict[str, int] = defaultdict(int)
-    for name, _inst, _path, _chunk in tasks:
+    for name, _path, _chunk in tasks:
         total_chunks[name] += 1
 
-    with ThreadPoolExecutor(max_workers=worker_cnt) as executor:
+    with ProcessPoolExecutor(max_workers=worker_cnt) as executor:
         futures = {
-            executor.submit(process_chunk, inst, path, chunk): name
-            for name, inst, path, chunk in tasks
+            executor.submit(process_chunk, path, chunk): name
+            for name, path, chunk in tasks
         }
         for future in as_completed(futures):
             name = futures[future]
