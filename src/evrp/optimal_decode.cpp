@@ -5,7 +5,9 @@
 #include <chrono>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <ranges>
+#include <span>
 
 evrp::SolutionCandidate::SolutionCandidate()
     : distance(0.0),
@@ -124,8 +126,49 @@ auto evrp::CsMatrix::trace(std::vector<size_t> &route, size_t ind1, size_t ind2)
   }
 }
 
+evrp::ChargingPrefixTable::ChargingPrefixTable(Instance const &instance, CsMatrix const &cs_mat)
+    : cs_cnt_(cs_mat.size()), battery_capacity_(instance.battery_capacity()) {
+  const auto node_cnt = instance.customer_cnt() + 1;
+  assert(cs_cnt_ <= std::numeric_limits<uint8_t>::max() + 1UZ);
+
+  energy_.resize(node_cnt * cs_cnt_);
+  order_.resize(node_cnt * cs_cnt_);
+  entries_.resize(node_cnt * cs_cnt_ * cs_cnt_);
+
+  auto order = std::vector<size_t>(cs_cnt_);
+  for (auto p = 0UZ; p < node_cnt; ++p) {
+    std::ranges::iota(order, 0UZ);
+    std::ranges::stable_sort(order, {}, [&](size_t f) { return instance.energy_required(p, cs_mat.ind_to_id(f)); });
+
+    for (auto r = 0UZ; r < cs_cnt_; ++r) {
+      auto f = order[r];
+      auto f_id = cs_mat.ind_to_id(f);
+      energy_[energy_index_(p, r)] = instance.energy_required(p, f_id);
+      order_[energy_index_(p, r)] = static_cast<uint8_t>(f);
+
+      for (auto g = 0UZ; g < cs_cnt_; ++g) {
+        auto &entry = entries_[entry_index_(p, r, g)];
+        entry = {instance.distance(p, f_id) + cs_mat.distance(f, g), static_cast<uint8_t>(f)};
+        // One more entry point is available than in the previous prefix; keep the previous best if it is not worse
+        if (r > 0 && entries_[entry_index_(p, r - 1, g)].distance <= entry.distance) {
+          entry = entries_[entry_index_(p, r - 1, g)];
+        }
+      }
+    }
+  }
+}
+
+auto evrp::ChargingPrefixTable::reachable_cnt(size_t p, double battery_used) const -> size_t {
+  auto energies = std::span(energy_).subspan(energy_index_(p, 0), cs_cnt_);
+  auto end = std::ranges::partition_point(energies, [&](double e) { return e + battery_used <= battery_capacity_; });
+  return static_cast<size_t>(end - energies.begin());
+}
+
 evrp::OptimalDecode::OptimalDecode(std::shared_ptr<Instance> instance)
-    : instance_(instance), cs_mat_(instance), fronts_(instance_->customer_cnt() + 2) {}
+    : instance_(instance),
+      cs_mat_(instance),
+      prefix_table_(*instance, cs_mat_),
+      fronts_(instance_->customer_cnt() + 2) {}
 
 auto evrp::OptimalDecode::decode(Solution const &solution) -> Solution {
   auto t0 = std::chrono::steady_clock::now();
@@ -140,6 +183,9 @@ auto evrp::OptimalDecode::decode(Solution const &solution) -> Solution {
 auto evrp::OptimalDecode::forward_pass_(Solution const &solution) -> void {
   assert(solution.routes().size() == instance_->customer_cnt());
   const auto &perm = solution.routes();
+  const auto battery = instance_->battery_capacity();
+  const auto cargo_capacity = instance_->cargo_capacity();
+  constexpr auto inf = std::numeric_limits<double>::infinity();
 
   fronts_[0].emplace(0.0, 0.0, 0.0);
   fronts_[0].colapse();
@@ -147,9 +193,21 @@ auto evrp::OptimalDecode::forward_pass_(Solution const &solution) -> void {
   for (auto i = 0UZ; i <= instance_->customer_cnt(); ++i) {
     auto prev_node = i == 0 ? instance_->depot_id() : perm[i - 1];
     auto curr_node = i == instance_->customer_cnt() ? instance_->depot_id() : perm[i];
+    auto demand = instance_->demand(curr_node);
 
     auto &prev_front = fronts_[i];
     auto &curr_front = fronts_[i + 1];
+
+    // Exit charging points that reach the next node on a full battery. These do not depend on the label.
+    exits_.clear();
+    for (auto g = 0UZ; g < cs_mat_.size(); ++g) {
+      if (instance_->energy_required(cs_mat_.ind_to_id(g), curr_node) <= battery) exits_.push_back(g);
+    }
+
+    // Depot detours reset the cargo, so all labels lead to the same candidates up to distance: keep only the best.
+    auto depot_distance = inf;
+    auto depot_prev = 0UZ;
+    auto depot_cs_in = uint8_t{0};
 
     for (auto sol_id = 0UZ; sol_id < prev_front.size(); ++sol_id) {
       const auto &sol = prev_front[sol_id];
@@ -163,64 +221,58 @@ auto evrp::OptimalDecode::forward_pass_(Solution const &solution) -> void {
         prop.prev = sol_id;
         prop.jump_case = JumpCase::Direct;
 
-        if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
+        if (prop.cargo_used <= cargo_capacity && prop.battery_used <= battery) {
           curr_front.emplace(prop);
         }
       }
 
-      for (auto cs_ind_in = 0UZ; cs_ind_in < cs_mat_.size(); ++cs_ind_in) {
-        // Skip this entry cs if we can't reach it with the remaining battery
-        auto cs_id_in = cs_mat_.ind_to_id(cs_ind_in);
-        if (instance_->energy_required(prev_node, cs_id_in) + sol.battery_used > instance_->battery_capacity()) {
-          continue;
-        }
+      // Charging points reachable with the remaining battery form a prefix of the sorted order
+      auto reach = prefix_table_.reachable_cnt(prev_node, sol.battery_used);
+      if (reach == 0) continue;
 
-        for (auto cs_ind_out = 0UZ; cs_ind_out <  cs_mat_.size(); ++cs_ind_out) {
-          // Skip this exit cs if we cannot reach the next node. Remember that we leave the cs with a full battery
-          auto cs_id_out = cs_mat_.ind_to_id(cs_ind_out);
-          if (instance_->energy_required(cs_id_out, curr_node) > instance_->battery_capacity()) {
-            continue;
-          }
+      // Option 2 - Charging detour, best entry point for every exit point
+      if (sol.cargo_used + demand <= cargo_capacity) {
+        for (auto g : exits_) {
+          const auto &entry = prefix_table_.best_entry(prev_node, reach, g);
+          if (entry.distance == inf) continue;
+          auto g_id = cs_mat_.ind_to_id(g);
 
-          // Option 2 - Charging detour
-          {
-            auto prop = sol;
-            prop.distance += instance_->distance(prev_node, cs_id_in);
-            prop.distance += cs_mat_.distance(cs_ind_in, cs_ind_out);
-            prop.distance += instance_->distance(cs_id_out, curr_node);
-            prop.battery_used = instance_->energy_required(cs_id_out, curr_node);
-            prop.cargo_used += instance_->demand(curr_node);
-            prop.prev = sol_id;
-            prop.jump_case = JumpCase::Charging;
-            prop.cs_ind_in = cs_ind_in;
-            prop.cs_ind_out = cs_ind_out;
-
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
-              curr_front.emplace(prop);
-            }
-          }
-
-          // Option 3 - Depot detour
-          {
-            auto prop = sol;
-            prop.distance += instance_->distance(prev_node, cs_id_in);
-            prop.distance += cs_mat_.distance(cs_ind_in, 0);
-            prop.distance += cs_mat_.distance(0, cs_ind_out);
-            prop.distance += instance_->distance(cs_id_out, curr_node);
-            prop.battery_used = instance_->energy_required(cs_id_out, curr_node);
-            prop.cargo_used = instance_->demand(curr_node);
-            prop.prev = sol_id;
-            prop.jump_case = JumpCase::Depot;
-            prop.cs_ind_in = cs_ind_in;
-            prop.cs_ind_out = cs_ind_out;
-
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
-              curr_front.emplace(prop);
-            }
-          }
+          auto prop = sol;
+          prop.distance += entry.distance + instance_->distance(g_id, curr_node);
+          prop.battery_used = instance_->energy_required(g_id, curr_node);
+          prop.cargo_used += demand;
+          prop.prev = sol_id;
+          prop.jump_case = JumpCase::Charging;
+          prop.cs_ind_in = entry.cs_ind;
+          prop.cs_ind_out = static_cast<uint8_t>(g);
+          curr_front.emplace(prop);
         }
       }
+
+      // Option 3 - Depot detour, the entry point leading to the depot
+      const auto &to_depot = prefix_table_.best_entry(prev_node, reach, 0);
+      if (sol.distance + to_depot.distance < depot_distance) {
+        depot_distance = sol.distance + to_depot.distance;
+        depot_prev = sol_id;
+        depot_cs_in = to_depot.cs_ind;
+      }
     }
+
+    if (depot_distance < inf && demand <= cargo_capacity) {
+      for (auto g : exits_) {
+        if (cs_mat_.distance(0, g) == inf) continue;
+        auto g_id = cs_mat_.ind_to_id(g);
+
+        auto prop = SolutionCandidate(depot_distance + cs_mat_.distance(0, g) + instance_->distance(g_id, curr_node),
+                                      instance_->energy_required(g_id, curr_node), demand);
+        prop.prev = depot_prev;
+        prop.jump_case = JumpCase::Depot;
+        prop.cs_ind_in = depot_cs_in;
+        prop.cs_ind_out = static_cast<uint8_t>(g);
+        curr_front.emplace(prop);
+      }
+    }
+
     // Remove dominated solutions
     curr_front.colapse();
   }

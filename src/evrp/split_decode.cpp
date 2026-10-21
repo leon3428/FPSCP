@@ -107,7 +107,8 @@ auto evrp::ParetoFront2D::colapse() -> void {
   valid_ = true;
 }
 
-evrp::BatteryDecode::BatteryDecode(std::shared_ptr<Instance> instance) : instance_(instance), cs_mat_(instance) {}
+evrp::BatteryDecode::BatteryDecode(std::shared_ptr<Instance> instance)
+    : instance_(instance), cs_mat_(instance), prefix_table_(*instance, cs_mat_) {}
 
 auto evrp::BatteryDecode::decode(Solution const &solution, bool single_cs) -> Solution {
   auto t0 = std::chrono::steady_clock::now();
@@ -122,6 +123,8 @@ auto evrp::BatteryDecode::decode(Solution const &solution, bool single_cs) -> So
 
 auto evrp::BatteryDecode::forward_pass_(Solution const &solution, bool single_cs) -> void {
   const auto &perm = solution.routes();
+  const auto cs_cnt = cs_mat_.size();
+  constexpr auto inf = std::numeric_limits<double>::infinity();
 
   fronts_[0].emplace(0.0, 0.0, 0.0);
   fronts_[0].colapse();
@@ -132,6 +135,11 @@ auto evrp::BatteryDecode::forward_pass_(Solution const &solution, bool single_cs
 
     auto &prev_front = fronts_[i - 1];
     auto &curr_front = fronts_[i];
+
+    // The routes are fixed, so all labels of a step have the same cargo. The charging options of a label then only
+    // depend on how many charging points it can reach, and only the shortest label per reach count matters.
+    group_distance_.assign(cs_cnt + 1, inf);
+    group_label_.assign(cs_cnt + 1, 0);
 
     for (auto sol_id = 0UZ; sol_id < prev_front.size(); ++sol_id) {
       const auto &sol = prev_front[sol_id];
@@ -154,44 +162,62 @@ auto evrp::BatteryDecode::forward_pass_(Solution const &solution, bool single_cs
         }
       }
 
-      for (auto cs_ind_in = 0UZ; cs_ind_in < cs_mat_.size(); ++cs_ind_in) {
-        // Skip this entry cs if we can't reach it with the remaining battery
-        auto cs_id_in = cs_mat_.ind_to_id(cs_ind_in);
-        if (instance_->energy_required(prev_node, cs_id_in) + sol.battery_used > instance_->battery_capacity()) {
-          continue;
+      auto reach = prefix_table_.reachable_cnt(prev_node, sol.battery_used);
+      if (sol.distance < group_distance_[reach]) {
+        group_distance_[reach] = sol.distance;
+        group_label_[reach] = sol_id;
+      }
+    }
+
+    // Option 2 - Charging detour from label `sol_id`, entering the station graph at cs_ind_in and leaving at cs_ind_out
+    auto add_charging = [&](size_t sol_id, double distance, size_t cs_ind_in, size_t cs_ind_out) {
+      auto cs_id_out = cs_mat_.ind_to_id(cs_ind_out);
+      auto prop = prev_front[sol_id];
+      prop.distance = distance + instance_->distance(cs_id_out, curr_node);
+      prop.battery_used = instance_->energy_required(cs_id_out, curr_node);
+      prop.cargo_used += instance_->demand(curr_node);
+      prop.prev = sol_id;
+      prop.jump_case = JumpCase::Charging;
+      prop.cs_ind_in = static_cast<uint8_t>(cs_ind_in);
+      prop.cs_ind_out = static_cast<uint8_t>(cs_ind_out);
+
+      if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
+        if (curr_node == instance_->depot_id()) {
+          prop.battery_used = 0;
+          prop.cargo_used = 0;
         }
+        curr_front.emplace(prop);
+      }
+    };
 
-        for (auto cs_ind_out = single_cs ? cs_ind_in : 0UZ; cs_ind_out < (single_cs ? cs_ind_in + 1 : cs_mat_.size()); ++cs_ind_out) {
-          // Skip this exit cs if we cannot reach the next node. Remember that we leave the cs with a full battery
-          auto cs_id_out = cs_mat_.ind_to_id(cs_ind_out);
-          if (instance_->energy_required(cs_id_out, curr_node) > instance_->battery_capacity()) {
-            continue;
-          }
+    // A label that reaches more charging points has all the options of one that reaches fewer, so walk from the
+    // largest reach down and keep the shortest label seen so far.
+    auto best_distance = inf;
+    auto best_label = 0UZ;
+    for (auto reach = cs_cnt; reach >= 1; --reach) {
+      auto improved = group_distance_[reach] < best_distance;
+      if (improved) {
+        best_distance = group_distance_[reach];
+        best_label = group_label_[reach];
+      }
 
-          // Option 2 - Charging detour
-          {
-            auto prop = sol;
-            prop.distance += instance_->distance(prev_node, cs_id_in);
-            prop.distance += cs_mat_.distance(cs_ind_in, cs_ind_out);
-            prop.distance += instance_->distance(cs_id_out, curr_node);
-            prop.battery_used = instance_->energy_required(cs_id_out, curr_node);
-            prop.cargo_used += instance_->demand(curr_node);
-            prop.prev = sol_id;
-            prop.jump_case = JumpCase::Charging;
-            prop.cs_ind_in = cs_ind_in;
-            prop.cs_ind_out = cs_ind_out;
-
-            if (prop.cargo_used <= instance_->cargo_capacity() && prop.battery_used <= instance_->battery_capacity()) {
-              if (curr_node == instance_->depot_id()) {
-                prop.battery_used = 0;
-                prop.cargo_used = 0;
-              }
-              curr_front.emplace(prop);
-            }
-          }
+      if (single_cs) {
+        // The (reach)-th closest charging point is usable by every label reaching at least that many
+        if (best_distance == inf) continue;
+        auto cs_ind = prefix_table_.closest(prev_node, reach - 1);
+        add_charging(best_label, best_distance + instance_->distance(prev_node, cs_mat_.ind_to_id(cs_ind)), cs_ind,
+                     cs_ind);
+      } else {
+        // Groups that are not shorter than a group with a larger reach only produce dominated candidates
+        if (!improved) continue;
+        for (auto cs_ind_out = 0UZ; cs_ind_out < cs_cnt; ++cs_ind_out) {
+          const auto &entry = prefix_table_.best_entry(prev_node, reach, cs_ind_out);
+          if (entry.distance == inf) continue;
+          add_charging(best_label, best_distance + entry.distance, entry.cs_ind, cs_ind_out);
         }
       }
     }
+
     // Remove dominated solutions
     curr_front.colapse();
   }

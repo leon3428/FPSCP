@@ -56,8 +56,13 @@ class BatteryDecode {
 
   std::shared_ptr<Instance> instance_;
   CsMatrix cs_mat_;
+  ChargingPrefixTable prefix_table_;
   std::vector<ParetoFront2D> fronts_;
   uint64_t last_elapsed_ns_ = 0;
+
+  // Shortest label of the current step per number of reachable charging points, and its index in the front
+  std::vector<double> group_distance_;
+  std::vector<size_t> group_label_;
 };
 
 }  // namespace evrp
