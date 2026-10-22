@@ -57,6 +57,14 @@ extension through scikit-build:
 uv sync --dev
 ```
 
+After changing C++ sources, recompile the extension with:
+
+```bash
+uv sync --reinstall-package evrp-optimal-decoder
+```
+
+A plain `uv sync` does not rebuild it, since the package is already installed.
+
 ## Dataset
 
 Tests and scripts expect EVRP benchmark files in a top-level `dataset/`
